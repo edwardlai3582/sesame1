@@ -1,0 +1,80 @@
+
+@-webkit-keyframes recordin {
+    0% {width: 60px; padding-top: 5px; padding-bottom: 5px; top: 10px;}
+    50% {width: 80px; padding-top: 10px; padding-bottom: 10px; top: 5px;}
+    100% {width: 60px; padding-top: 5px; padding-bottom: 5px; top: 10px;}
+}
+@-moz-keyframes recordin {
+    0% {width: 60px; padding-top: 5px; padding-bottom: 5px; top: 10px;}
+    50% {width: 80px; padding-top: 10px; padding-bottom: 10px; top: 5px;}
+    100% {width: 60px; padding-top: 5px; padding-bottom: 5px; top: 10px;}
+}
+@-o-keyframes recordin {
+    0% {width: 60px; padding-top: 5px; padding-bottom: 5px; top: 10px;}
+    50% {width: 80px; padding-top: 10px; padding-bottom: 10px; top: 5px;}
+    100% {width: 60px; padding-top: 5px; padding-bottom: 5px; top: 10px;}
+}
+@keyframes recordin {
+    0% {width: 60px; padding-top: 5px; padding-bottom: 5px; top: 10px;}
+    50% {width: 80px; padding-top: 10px; padding-bottom: 10px; top: 5px;}
+    100% {width: 60px; padding-top: 5px; padding-bottom: 5px; top: 10px;}
+}
+
+body{
+    position: absolute;
+    width: 100%;
+    font-family: Arial, Helvetica, sans-serif;
+    text-align: center;
+    padding: 0;
+    margin: 0;
+    z-index: 1;
+}
+
+#Btn{
+    width: 60px;
+    position: relative;
+	top: 10px;
+    cursor: pointer;
+    background-color: deeppink;
+    padding: 5px;
+    text-align: center;
+    
+    border: none;
+    border-radius: 5%;
+    font-size: 20px;
+}
+
+#Btn.recordin{
+    -webkit-animation: recordin 1s infinite;
+    -moz-animation: recordin 1s infinite;
+    -o-animation: recordin 1s infinite;
+    animation: recordin 1s infinite;
+}
+
+#Btn:disabled{
+    cursor: not-allowed;
+    color: black;
+}
+
+.warning{
+    position: absolute;
+    top:0;
+    width: 100%;
+    z-index: 2;
+    background-color: gray;
+    height: 100vh;
+    margin: 0;
+    opacity: 0.5;
+    display: -webkit-box;
+    display: -ms-flexbox;
+    display: flex;
+    -webkit-box-pack: center;
+    -ms-flex-pack: center;
+    justify-content: center; 
+    -webkit-box-align: center; 
+    -ms-flex-align: center; 
+    align-items: center; 
+}
+
+
+

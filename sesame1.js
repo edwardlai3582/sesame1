@@ -1,171 +1,160 @@
 // variables
+var recordTime = 30;
+var timeCountdown = 0;
+var channels = 2;
+var bufferSize = 2048;
+
 var leftchannel = [];
 var rightchannel = [];
+
 var recorder = null;
 var recording = false;
 var recordingLength = 0;
-var volume = null;
-var audioInput = null;
-var sampleRate = null;
-var audioContext = null;
-var context = null;
-var outputElement = document.getElementById('output');
-var outputString;
 
-// feature detection 
-if (!navigator.getUserMedia)
-    navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia ||
-                  navigator.mozGetUserMedia || navigator.msGetUserMedia;
+var microphone = null;
+    // creates the audio context
+var audioContext = window.AudioContext || window.webkitAudioContext;
+var context = new audioContext();
 
-if (navigator.getUserMedia){
-    navigator.getUserMedia({audio:true}, success, function(e) {
-    alert('Error capturing audio.');
-    });
-} else alert('getUserMedia not supported in this browser.');
+var currentState = document.getElementById('currentState');
+var Btn = document.getElementById('Btn');
+
+var frameCount;
+var sampleRate;
+var audioBuffer;
+var audioBufferSource;
+
+// Older browsers might not implement mediaDevices at all, so we set an empty object first
+if ( navigator.mediaDevices === undefined ) {
+  navigator.mediaDevices = {};
+}
+
+// Some browsers partially implement mediaDevices. We can't just assign an object
+// with getUserMedia as it would overwrite existing properties.
+// Here, we will just add the getUserMedia property if it's missing.
+if ( navigator.mediaDevices.getUserMedia === undefined ) {
+    navigator.mediaDevices.getUserMedia = function(constraints) {
+
+        // First get ahold of the legacy getUserMedia, if present
+        var getUserMedia = (navigator.getUserMedia ||
+                navigator.webkitGetUserMedia ||
+                navigator.mozGetUserMedia);
+
+        // Some browsers just don't implement it - return a rejected promise with an error
+        // to keep a consistent interface
+        if ( !getUserMedia ) {
+            return Promise.reject(new Error('getUserMedia is not implemented in this browser'));
+        }
+
+        // Otherwise, wrap the call to the old navigator.getUserMedia with a Promise
+        return new Promise(function(resolve, reject) {
+            getUserMedia.call(navigator, constraints, resolve, reject);
+        });
+    }
+}
+
+navigator.mediaDevices.getUserMedia({ audio: true })
+.then(success)
+.catch(function(err) {
+    console.log(err.name + ": " + err.message);
+});
 
 // add Btn click event
-document.getElementById("Btn").addEventListener("click", function(){
+Btn.addEventListener("click", function(){
     
     //disable
     this.disabled = true;
-
-    recording = true;
+    timeCountdown = recordTime*1000;
+    if(audioBufferSource)audioBufferSource.stop();    
+    Btn.innerHTML = "30.00";
+    
     // reset the buffers for the new recording
     leftchannel.length = rightchannel.length = 0;
     recordingLength = 0;
-    outputElement.innerHTML = 'Recording now...';
-    console.time("recording...");
+    currentState.innerHTML = 'Recording...';
+    console.time("recording");
+     
+    recording = true;
+
+    Btn.className = "recordin";
     
-    setTimeout(function (self) {
-        console.timeEnd("recording...");
-        // we stop recording
-        recording = false;
+    var timerId = setInterval(countdown, 10, this);
 
-        outputElement.innerHTML = 'Building wav file...';
+    function countdown(self) {
+        if ( timeCountdown === 0  || !recording ) {
+            console.timeEnd("recording");  
+            recording = false;
+            clearTimeout(timerId);
 
-        // we flat the left and right channels down
-        var leftBuffer = mergeBuffers ( leftchannel, recordingLength );
-        var rightBuffer = mergeBuffers ( rightchannel, recordingLength );
-        // we interleave both channels together
-        var interleaved = interleave ( leftBuffer, rightBuffer );
+            Btn.className = "";  
+            Btn.innerHTML = "REC";
+            self.disabled = false;      
 
-        // we create our wav file
-        var buffer = new ArrayBuffer(44 + interleaved.length * 2);
-        var view = new DataView(buffer);
+            currentState.innerHTML = 'Playing...';
+            //console.log("recordingLength="+recordingLength);
+            
+            // we flat the left and right channels down
+            var leftBuffer = combineBuffers ( leftchannel, recordingLength );
+            var rightBuffer = combineBuffers ( rightchannel, recordingLength );
 
-        // RIFF chunk descriptor
-        writeUTFBytes(view, 0, 'RIFF');
-        view.setUint32(4, 44 + interleaved.length * 2, true);
-        writeUTFBytes(view, 8, 'WAVE');
-        // FMT sub-chunk
-        writeUTFBytes(view, 12, 'fmt ');
-        view.setUint32(16, 16, true);
-        view.setUint16(20, 1, true);
-        // stereo (2 channels)
-        view.setUint16(22, 2, true);
-        view.setUint32(24, sampleRate, true);
-        view.setUint32(28, sampleRate * 4, true);
-        view.setUint16(32, 4, true);
-        view.setUint16(34, 16, true);
-        // data sub-chunk
-        writeUTFBytes(view, 36, 'data');
-        view.setUint32(40, interleaved.length * 2, true);
-
-        // write the PCM samples
-        var lng = interleaved.length;
-        var index = 44;
-        var volume = 1;
-        for (var i = 0; i < lng; i++){
-            view.setInt16(index, interleaved[i] * (0x7FFF * volume), true);
-            index += 2;
+            audioBuffer= context.createBuffer(channels,recordingLength, sampleRate);
+            audioBufferSource = context.createBufferSource();
+            audioBufferSource.connect(context.destination);           
+            audioBuffer.getChannelData(0).set(leftBuffer);
+            if( channels === 2 ){
+                audioBuffer.getChannelData(1).set(rightBuffer);     
+            }       
+            audioBufferSource.buffer = audioBuffer;
+            audioBufferSource.loop = true;
+            audioBufferSource.start();
+        } else {
+            Btn.innerHTML = (timeCountdown/1000<10) ? "0" + (timeCountdown/1000).toFixed(2) : (timeCountdown/1000).toFixed(2);
+            timeCountdown -= 10;
         }
-
-        // our final binary blob
-        var blob = new Blob ( [ view ], { type : 'audio/wav' } );
-
-        //add audio to play
-        outputElement.innerHTML = 'Handing off the file now...';
-        var blobUrl = (window.URL || window.webkitURL).createObjectURL(blob);
-        var audio = new Audio(blobUrl);
-        audio.loop = true;
-        audio.play();
-        
-        self.disabled = false;
-    }, 5000, this);        
-
+    }
+    
 });
 
-function interleave(leftChannel, rightChannel){
-  var length = leftChannel.length + rightChannel.length;
-  var result = new Float32Array(length);
-
-  var inputIndex = 0;
-
-  for (var index = 0; index < length; ){
-    result[index++] = leftChannel[inputIndex];
-    result[index++] = rightChannel[inputIndex];
-    inputIndex++;
-  }
-  return result;
-}
-
-function mergeBuffers(channelBuffer, recordingLength){
-  var result = new Float32Array(recordingLength);
-  var offset = 0;
-  var lng = channelBuffer.length;
-  for (var i = 0; i < lng; i++){
-    var buffer = channelBuffer[i];
-    result.set(buffer, offset);
-    offset += buffer.length;
-  }
-  return result;
-}
-
-function writeUTFBytes(view, offset, string){ 
-  var lng = string.length;
-  for (var i = 0; i < lng; i++){
-    view.setUint8(offset + i, string.charCodeAt(i));
-  }
+function combineBuffers( channelBuffer, recordingLength ){
+    var result = new Float32Array(recordingLength);
+    var offset = 0;
+    var lng = channelBuffer.length;
+    for (var i = 0; i < lng; i++){
+        var buffer = channelBuffer[i];
+        result.set(buffer, offset);
+        offset += buffer.length;
+    }
+    return result;
 }
 
 function success(e){
-    // creates the audio context
-    audioContext = window.AudioContext || window.webkitAudioContext;
-    context = new audioContext();
-
-	// we query the context sample rate (varies depending on platforms)
-    sampleRate = context.sampleRate;
-
-    console.log('succcess');
-    
-    // creates a gain node
-    volume = context.createGain();
-
     // creates an audio node from the microphone incoming stream
-    audioInput = context.createMediaStreamSource(e);
-
-    // connect the stream to the gain node
-    audioInput.connect(volume);
-
-    /* From the spec: This value controls how frequently the audioprocess event is 
-    dispatched and how many sample-frames need to be processed each call. 
-    Lower values for buffer size will result in a lower (better) latency. 
-    Higher values will be necessary to avoid audio breakup and glitches */
-    var bufferSize = 2048;
-    recorder = context.createScriptProcessor(bufferSize, 2, 2);
-
+    microphone = context.createMediaStreamSource(e);    
+    recorder = context.createScriptProcessor(bufferSize, channels, channels);
+    sampleRate = context.sampleRate;
+    frameCount = sampleRate * recordTime;
+        
     recorder.onaudioprocess = function(e){
-        if (!recording) return;
-        var left = e.inputBuffer.getChannelData (0);
-        var right = e.inputBuffer.getChannelData (1);
-        // we clone the samples
-        leftchannel.push (new Float32Array (left));
-        rightchannel.push (new Float32Array (right));
-        recordingLength += bufferSize;
-        console.log('recording');
+        if ( !recording ) return;
+                
+        if( recordingLength + bufferSize > frameCount ){
+            recordingLength = frameCount;
+            recording = false;
+            return;
+        }
+        else{
+            // we clone the samples
+            var left = e.inputBuffer.getChannelData (0);
+            leftchannel.push (new Float32Array (left));
+            if( channels === 2 ){
+                var right = e.inputBuffer.getChannelData (1);
+                rightchannel.push (new Float32Array (right));
+            }
+            recordingLength += bufferSize;
+        }
     }
 
     // we connect the recorder
-    volume.connect (recorder);
-    recorder.connect (context.destination); 
+    microphone.connect ( recorder );
+    recorder.connect( context.destination );
 }
