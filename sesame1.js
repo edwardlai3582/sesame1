@@ -1,6 +1,5 @@
 // variables
 var recordTime = 30;
-var timeCountdown = 0;
 var channels = 2;
 var bufferSize = 2048;
 
@@ -12,106 +11,103 @@ var recording = false;
 var recordingLength = 0;
 
 var microphone = null;
-    // creates the audio context
+
 var audioContext = window.AudioContext || window.webkitAudioContext;
-var context = new audioContext();
+var context;
 
 var currentState = document.getElementById('currentState');
 var Btn = document.getElementById('Btn');
+var warning = null;
 
 var frameCount;
 var sampleRate;
 var audioBuffer;
 var audioBufferSource;
 
-// Older browsers might not implement mediaDevices at all, so we set an empty object first
-if ( navigator.mediaDevices === undefined ) {
-  navigator.mediaDevices = {};
+//IE11 doesn't support promise so no navigator.mediaDevices.getUserMedia
+navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
+
+if (navigator.getUserMedia){
+    navigator.getUserMedia({audio:true}, success, function(e) {
+        alert('getUserMedia error: '+e);
+    });
+} 
+else{
+    warning = document.createElement("p");
+    warning.className = "warning"; 
+    warning.innerHTML = "This browser does not support getUserMedia";
+    document.body.appendChild(warning);      
 }
-
-// Some browsers partially implement mediaDevices. We can't just assign an object
-// with getUserMedia as it would overwrite existing properties.
-// Here, we will just add the getUserMedia property if it's missing.
-if ( navigator.mediaDevices.getUserMedia === undefined ) {
-    navigator.mediaDevices.getUserMedia = function(constraints) {
-
-        // First get ahold of the legacy getUserMedia, if present
-        var getUserMedia = (navigator.getUserMedia ||
-                navigator.webkitGetUserMedia ||
-                navigator.mozGetUserMedia);
-
-        // Some browsers just don't implement it - return a rejected promise with an error
-        // to keep a consistent interface
-        if ( !getUserMedia ) {
-            return Promise.reject(new Error('getUserMedia is not implemented in this browser'));
-        }
-
-        // Otherwise, wrap the call to the old navigator.getUserMedia with a Promise
-        return new Promise(function(resolve, reject) {
-            getUserMedia.call(navigator, constraints, resolve, reject);
-        });
-    }
-}
-
-navigator.mediaDevices.getUserMedia({ audio: true })
-.then(success)
-.catch(function(err) {
-    console.log(err.name + ": " + err.message);
-});
 
 // add Btn click event
 Btn.addEventListener("click", function(){
+    var startAnimationFrame = null;
     
-    //disable
+    //stop playing audio
+    if(audioBufferSource)audioBufferSource.stop();
+    
+    //display related
     this.disabled = true;
-    timeCountdown = recordTime*1000;
-    if(audioBufferSource)audioBufferSource.stop();    
-    Btn.innerHTML = "30.00";
+    this.innerHTML = "30.00";
+    this.className = "recordin";
+    currentState.innerHTML = 'Recording...';
     
     // reset the buffers for the new recording
     leftchannel.length = rightchannel.length = 0;
     recordingLength = 0;
-    currentState.innerHTML = 'Recording...';
-    console.time("recording");
-     
-    recording = true;
-
-    Btn.className = "recordin";
     
-    var timerId = setInterval(countdown, 10, this);
+    //start recording
+    recording = true;
+    console.time("recording_time");
 
-    function countdown(self) {
-        if ( timeCountdown === 0  || !recording ) {
-            console.timeEnd("recording");  
+    //prevent inactive tab, different thread
+    window.requestAnimationFrame(step);   
+
+    function step(timestamp) {
+        if (!startAnimationFrame) startAnimationFrame = timestamp;
+        var progress = timestamp - startAnimationFrame;
+        
+        if (progress < recordTime*1000 ) {
+            var displayTime = (recordTime - progress/1000).toFixed(2);
+            if(displayTime < 0){
+                displayTime  = (0).toFixed(2);
+            }
+            Btn.innerHTML = (displayTime<10) ? "0" + displayTime : displayTime;   
+
+            window.requestAnimationFrame(step);
+        }
+        //stop recording
+        else{
+            console.timeEnd("recording_time");
             recording = false;
-            clearTimeout(timerId);
 
+            //display related
             Btn.className = "";  
             Btn.innerHTML = "REC";
-            self.disabled = false;      
-
+            Btn.disabled = false; 
             currentState.innerHTML = 'Playing...';
-            //console.log("recordingLength="+recordingLength);
-            
+
             // we flat the left and right channels down
             var leftBuffer = combineBuffers ( leftchannel, recordingLength );
             var rightBuffer = combineBuffers ( rightchannel, recordingLength );
-
+            
+            //audioBuffer
             audioBuffer= context.createBuffer(channels,recordingLength, sampleRate);
-            audioBufferSource = context.createBufferSource();
-            audioBufferSource.connect(context.destination);           
             audioBuffer.getChannelData(0).set(leftBuffer);
             if( channels === 2 ){
                 audioBuffer.getChannelData(1).set(rightBuffer);     
-            }       
+            }  
+            
+            //audioBufferSource 
+            audioBufferSource = context.createBufferSource();
             audioBufferSource.buffer = audioBuffer;
+            
+            //play audio
+            audioBufferSource.connect(context.destination);           
             audioBufferSource.loop = true;
             audioBufferSource.start();
-        } else {
-            Btn.innerHTML = (timeCountdown/1000<10) ? "0" + (timeCountdown/1000).toFixed(2) : (timeCountdown/1000).toFixed(2);
-            timeCountdown -= 10;
         }
-    }
+    } 
     
 });
 
@@ -128,7 +124,18 @@ function combineBuffers( channelBuffer, recordingLength ){
 }
 
 function success(e){
-    // creates an audio node from the microphone incoming stream
+    //creates audio nodes
+    if(audioContext){
+        context = new audioContext();
+    }
+    else {
+        warning = document.createElement("p");
+        warning.className = "warning"; 
+        warning.innerHTML = "This browser does not support AudioContext";
+        document.body.appendChild(warning);      
+        return;
+    }
+
     microphone = context.createMediaStreamSource(e);    
     recorder = context.createScriptProcessor(bufferSize, channels, channels);
     sampleRate = context.sampleRate;
@@ -143,7 +150,7 @@ function success(e){
             return;
         }
         else{
-            // we clone the samples
+            //clone the samples
             var left = e.inputBuffer.getChannelData (0);
             leftchannel.push (new Float32Array (left));
             if( channels === 2 ){
@@ -154,7 +161,7 @@ function success(e){
         }
     }
 
-    // we connect the recorder
+    //connect the recorder
     microphone.connect ( recorder );
     recorder.connect( context.destination );
 }
