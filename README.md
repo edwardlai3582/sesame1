@@ -7,4 +7,8 @@ seconds, recording stops and the recorded audio replays.
 Live Demo
 -------------
 https://illl48.github.io/sesame1
+
+Refenence
+-------------
+http://typedarray.org/from-microphone-to-wav-with-getusermedia-and-web-audio/
  

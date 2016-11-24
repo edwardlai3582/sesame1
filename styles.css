@@ -76,5 +76,16 @@ body{
     align-items: center; 
 }
 
+#progressBar{
+    position: relative;
+    height: 3px;
+    margin: 0 auto;
+    margin-bottom: 10px;
+}
+
+#frontBar{
+    height:inherit;
+}
+
 
 
